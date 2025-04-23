@@ -40,7 +40,6 @@ func (t *t18) HandleMessage(from gen.PID, message any) error {
 	return nil
 }
 
-// Test state transitions with messages and calls
 func factory_t18_state_transitions() gen.ProcessBehavior {
 	return &t18_state_transitions{}
 }
@@ -74,9 +73,9 @@ func (sm *t18_state_transitions) Init(args ...any) (act.StateMachineSpec[t18_sta
 	return spec, nil
 }
 
-func t18_move_to_state2(state gen.Atom, data t18_state_transitions_data, message t18_state2, proc gen.Process) (gen.Atom, t18_state_transitions_data, error) {
+func t18_move_to_state2(state gen.Atom, data t18_state_transitions_data, message t18_state2, proc gen.Process) (gen.Atom, t18_state_transitions_data, []act.Action, error) {
 	data.transitions++
-	return gen.Atom("state2"), data, nil
+	return gen.Atom("state2"), data, nil, nil
 }
 
 func t18_total_transitions(state gen.Atom, data t18_state_transitions_data, message t18_get_transitions, proc gen.Process) (gen.Atom, t18_state_transitions_data, int, error) {

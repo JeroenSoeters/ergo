@@ -78,8 +78,8 @@ func (sm *t20_state_enter_callback) Init(args ...any) (act.StateMachineSpec[t20_
 	return spec, nil
 }
 
-func t20_move_to_state2(state gen.Atom, data t20_state_enter_callback_data, message t20_state2, proc gen.Process) (gen.Atom, t20_state_enter_callback_data, error) {
-	return gen.Atom("state2"), data, nil
+func t20_move_to_state2(state gen.Atom, data t20_state_enter_callback_data, message t20_state2, proc gen.Process) (gen.Atom, t20_state_enter_callback_data, []act.Action, error) {
+	return gen.Atom("state2"), data, nil, nil
 }
 
 func t20_state_and_callback_count(state gen.Atom, data t20_state_enter_callback_data, message t20_state_enter_callback_query, proc gen.Process) (gen.Atom, t20_state_enter_callback_data, t20_state_enter_callback_data, error) {
