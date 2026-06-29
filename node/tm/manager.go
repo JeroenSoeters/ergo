@@ -39,6 +39,14 @@ type relationKey struct {
 type targetEntry struct {
 	allowAlwaysFirst bool
 	consumers        map[gen.PID]struct{}
+
+	// wireMu serializes the remote Link/Monitor request for THIS target. It is
+	// acquired only after tm.mutex has been released, so a slow network
+	// round-trip to one target no longer blocks link/monitor operations for
+	// other targets behind the node-global mutex. The rollback path
+	// re-acquires tm.mutex while holding wireMu, so the lock order is always
+	// wireMu -> tm.mutex (never the reverse).
+	wireMu sync.Mutex
 }
 
 type eventEntry struct {

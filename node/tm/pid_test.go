@@ -2,11 +2,63 @@ package tm
 
 import (
 	"testing"
+	"time"
 
 	"ergo.services/ergo/gen"
 )
 
 // LinkPID tests
+
+// TestLinkPID_Remote_SlowTargetDoesNotBlockOthers asserts that a slow remote
+// LinkPID to one target does not stall a LinkPID to a different target. The
+// node-global mutex must not be held across the network round-trip; the remote
+// request is serialized per-target instead.
+func TestLinkPID_Remote_SlowTargetDoesNotBlockOthers(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+
+	targetA := gen.PID{Node: "node2", ID: 200}
+	targetB := gen.PID{Node: "node2", ID: 201}
+
+	core := newMockCore("node1")
+	core.linkGate = func(to gen.PID) {
+		if to == targetA {
+			close(entered)
+			<-release
+		}
+	}
+
+	tm := Create(core, Options{}).(*targetManager)
+
+	consumerA := gen.PID{Node: "node1", ID: 100}
+	consumerB := gen.PID{Node: "node1", ID: 101}
+
+	go func() { _ = tm.LinkPID(consumerA, targetA) }()
+
+	// Wait until the link to targetA is in-flight inside the network call.
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the slow link to targetA to start")
+	}
+
+	// The link to targetB must complete while targetA's link is still blocked.
+	done := make(chan error, 1)
+	go func() { done <- tm.LinkPID(consumerB, targetB) }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			close(release)
+			t.Fatalf("LinkPID to targetB failed: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		close(release)
+		t.Fatal("LinkPID to targetB blocked behind the slow link to targetA")
+	}
+
+	close(release)
+}
 
 func TestLinkPID_Local_Basic(t *testing.T) {
 	core := newMockCore("node1")

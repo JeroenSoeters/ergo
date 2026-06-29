@@ -23,6 +23,7 @@ type mockCore struct {
 	eventBuffers    map[gen.Event][]gen.MessageEvent
 	connectionError error
 	linkError       error
+	linkGate        func(to gen.PID)
 }
 
 type eventLinkRequest struct {
@@ -131,15 +132,20 @@ func (m *mockCore) GetConnection(node gen.Atom) (gen.Connection, error) {
 	return &mockConnection{
 		core:      m,
 		linkError: m.linkError,
+		linkGate:  m.linkGate,
 	}, nil
 }
 
 type mockConnection struct {
 	core      *mockCore
 	linkError error
+	linkGate  func(to gen.PID)
 }
 
 func (c *mockConnection) LinkPID(from gen.PID, to gen.PID) error {
+	if c.linkGate != nil {
+		c.linkGate(to)
+	}
 	if c.linkError != nil {
 		return c.linkError
 	}
