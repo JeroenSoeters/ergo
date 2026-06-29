@@ -81,6 +81,7 @@ func (p *port) Init(process gen.MetaProcess) error {
 
 	p.MetaProcess = process
 	p.cmd = exec.Command(p.options.Cmd, p.options.Args...)
+	p.cmd.SysProcAttr = p.options.SysProcAttr
 
 	if p.in, err = p.cmd.StdinPipe(); err != nil {
 		p.Log().Error("unable to get stdin: %s", err)

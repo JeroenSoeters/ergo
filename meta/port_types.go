@@ -3,6 +3,7 @@ package meta
 import (
 	"bufio"
 	"sync"
+	"syscall"
 	"time"
 
 	"ergo.services/ergo/gen"
@@ -47,6 +48,12 @@ type PortOptions struct {
 	SplitFuncStdout bufio.SplitFunc
 	SplitFuncStderr bufio.SplitFunc
 	Binary          PortBinaryOptions
+
+	// SysProcAttr, when set, is applied to the spawned process. It lets the
+	// caller request OS-level process attributes — most notably a parent-death
+	// signal (Pdeathsig on Linux) so the external process is killed if the host
+	// node's process dies, rather than being orphaned.
+	SysProcAttr *syscall.SysProcAttr
 }
 
 type PortBinaryOptions struct {
