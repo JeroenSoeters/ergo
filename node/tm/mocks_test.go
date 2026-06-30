@@ -24,6 +24,7 @@ type mockCore struct {
 	connectionError error
 	linkError       error
 	linkGate        func(to gen.PID)
+	unlinkGate      func(to gen.PID)
 }
 
 type eventLinkRequest struct {
@@ -130,16 +131,18 @@ func (m *mockCore) GetConnection(node gen.Atom) (gen.Connection, error) {
 	}
 
 	return &mockConnection{
-		core:      m,
-		linkError: m.linkError,
-		linkGate:  m.linkGate,
+		core:       m,
+		linkError:  m.linkError,
+		linkGate:   m.linkGate,
+		unlinkGate: m.unlinkGate,
 	}, nil
 }
 
 type mockConnection struct {
-	core      *mockCore
-	linkError error
-	linkGate  func(to gen.PID)
+	core       *mockCore
+	linkError  error
+	linkGate   func(to gen.PID)
+	unlinkGate func(to gen.PID)
 }
 
 func (c *mockConnection) LinkPID(from gen.PID, to gen.PID) error {
@@ -155,6 +158,9 @@ func (c *mockConnection) LinkPID(from gen.PID, to gen.PID) error {
 }
 
 func (c *mockConnection) UnlinkPID(from gen.PID, to gen.PID) error {
+	if c.unlinkGate != nil {
+		c.unlinkGate(to)
+	}
 	c.core.sentUnlinks.Push(linkRequest{from: from, to: to})
 	return nil
 }

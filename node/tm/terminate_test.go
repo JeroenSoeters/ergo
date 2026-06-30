@@ -7,6 +7,61 @@ import (
 	"ergo.services/ergo/gen"
 )
 
+// TestTerminatedProcess_SlowRemoteUnlinkDoesNotBlockOthers asserts that
+// TerminatedProcess does not hold the node-global mutex across the remote
+// Unlink it sends for a terminated process's links — a slow unlink must not
+// stall other link/monitor operations on the node.
+func TestTerminatedProcess_SlowRemoteUnlinkDoesNotBlockOthers(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+
+	consumer := gen.PID{Node: "node1", ID: 100}
+	target := gen.PID{Node: "node2", ID: 200} // remote target -> terminate sends a remote Unlink
+
+	core := newMockCore("node1")
+	core.unlinkGate = func(to gen.PID) {
+		if to == target {
+			close(entered)
+			<-release
+		}
+	}
+
+	tm := Create(core, Options{}).(*targetManager)
+
+	if err := tm.LinkPID(consumer, target); err != nil {
+		t.Fatalf("LinkPID failed: %v", err)
+	}
+
+	// Terminate the consumer: local cleanup runs under the mutex, the remote
+	// Unlink runs after the mutex is released.
+	go tm.TerminatedProcess(consumer, nil)
+
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the remote Unlink to start")
+	}
+
+	// A link to a different target must complete while the Unlink is blocked.
+	done := make(chan error, 1)
+	go func() {
+		done <- tm.LinkPID(gen.PID{Node: "node1", ID: 101}, gen.PID{Node: "node2", ID: 201})
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			close(release)
+			t.Fatalf("concurrent LinkPID failed: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		close(release)
+		t.Fatal("LinkPID blocked behind TerminatedProcess's remote Unlink — mutex held across the remote call")
+	}
+
+	close(release)
+}
+
 // Test TerminatedTargetPID - sends exit to link subscribers
 func TestTerminatedTargetPID_LinkSubscribers(t *testing.T) {
 	core := newMockCore("node1")

@@ -517,7 +517,28 @@ func (tm *targetManager) TerminatedTargetNode(node gen.Atom, reason error) {
 	}
 }
 
+// pendingRemoteTeardown is a remote Unlink/Demonitor notification queued during
+// TerminatedProcess and sent AFTER tm.mutex is released. Sending it while
+// holding the node-global mutex blocks every other link/monitor/terminate
+// operation on the node for up to the request timeout.
+type pendingRemoteTeardown struct {
+	node gen.Atom
+	do   func(conn gen.Connection)
+}
+
 func (tm *targetManager) TerminatedProcess(pid gen.PID, reason error) {
+	// Collect remote teardown notifications and execute them OUTSIDE the lock.
+	// This defer is registered before the Unlock defer below, so (defers run
+	// LIFO) the mutex is released first and these run unlocked.
+	var pending []pendingRemoteTeardown
+	defer func() {
+		for _, p := range pending {
+			if conn, err := tm.core.GetConnection(p.node); err == nil {
+				p.do(conn)
+			}
+		}
+	}()
+
 	tm.mutex.Lock()
 	defer tm.mutex.Unlock()
 
@@ -616,25 +637,20 @@ func (tm *targetManager) TerminatedProcess(pid gen.PID, reason error) {
 			}
 		}
 
-		// Last local consumer - send remote Unlink
-		connection, err := tm.core.GetConnection(targetNode)
-		if err != nil {
-			continue
-		}
-
-		switch t := key.target.(type) {
-		case gen.PID:
-			connection.UnlinkPID(tm.core.PID(), t)
-
-		case gen.ProcessID:
-			connection.UnlinkProcessID(tm.core.PID(), t)
-
-		case gen.Alias:
-			connection.UnlinkAlias(tm.core.PID(), t)
-
-		case gen.Event:
-			connection.UnlinkEvent(tm.core.PID(), t)
-		}
+		// Last local consumer - queue the remote Unlink for after the unlock.
+		t := key.target
+		pending = append(pending, pendingRemoteTeardown{node: targetNode, do: func(conn gen.Connection) {
+			switch tt := t.(type) {
+			case gen.PID:
+				conn.UnlinkPID(tm.core.PID(), tt)
+			case gen.ProcessID:
+				conn.UnlinkProcessID(tm.core.PID(), tt)
+			case gen.Alias:
+				conn.UnlinkAlias(tm.core.PID(), tt)
+			case gen.Event:
+				conn.UnlinkEvent(tm.core.PID(), tt)
+			}
+		}})
 	}
 
 	// Process monitorRelations
@@ -729,25 +745,20 @@ func (tm *targetManager) TerminatedProcess(pid gen.PID, reason error) {
 			}
 		}
 
-		// Last local consumer - send remote Demonitor
-		connection, err := tm.core.GetConnection(targetNode)
-		if err != nil {
-			continue
-		}
-
-		switch t := key.target.(type) {
-		case gen.PID:
-			connection.DemonitorPID(tm.core.PID(), t)
-
-		case gen.ProcessID:
-			connection.DemonitorProcessID(tm.core.PID(), t)
-
-		case gen.Alias:
-			connection.DemonitorAlias(tm.core.PID(), t)
-
-		case gen.Event:
-			connection.DemonitorEvent(tm.core.PID(), t)
-		}
+		// Last local consumer - queue the remote Demonitor for after the unlock.
+		t := key.target
+		pending = append(pending, pendingRemoteTeardown{node: targetNode, do: func(conn gen.Connection) {
+			switch tt := t.(type) {
+			case gen.PID:
+				conn.DemonitorPID(tm.core.PID(), tt)
+			case gen.ProcessID:
+				conn.DemonitorProcessID(tm.core.PID(), tt)
+			case gen.Alias:
+				conn.DemonitorAlias(tm.core.PID(), tt)
+			case gen.Event:
+				conn.DemonitorEvent(tm.core.PID(), tt)
+			}
+		}})
 	}
 
 	// Cleanup events owned by terminated process (PRODUCER cleanup)
